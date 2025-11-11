@@ -30,12 +30,17 @@ APP_NAME = "AgriChat Pro"
 CSV_FILENAME = "agriculture_data.csv"
 IMAGES_DIR = os.path.abspath(os.getenv("IMAGES_DIR", "images"))
 DB_PATH = "chatbot_data.db"
-OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY", "")
+OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY", "6574a31d5e2fafd7751e41696dfb674a")
 SIM_THRESHOLD = 0.2
 DIFFLIB_CUTOFF = 0.45
 
 os.makedirs(IMAGES_DIR, exist_ok=True)
-st.set_page_config(page_title=APP_NAME, layout="wide", page_icon="🌱")
+st.set_page_config(
+    page_title=APP_NAME, 
+    layout="wide", 
+    page_icon="🌱",
+    initial_sidebar_state="collapsed"  # Better for mobile
+)
 
 # ---------------- HELPERS ----------------
 def now_iso():
@@ -249,7 +254,7 @@ for topic in knowledge_base:
 vectorizer = get_vectorizer(corpus_texts)
 lowered_questions = [q.lower() for q in corpus_texts]
 
-# ---------------- ENHANCED WEATHER WITH FALLBACKS ----------------
+# ---------------- ENHANCED WEATHER WITH CROP ADVICE ----------------
 def get_weather(city="Maseru", days=3):
     try:
         if not OPENWEATHER_API_KEY:
@@ -267,19 +272,113 @@ def get_weather(city="Maseru", days=3):
         return "🌤️ Weather service is temporarily unavailable. For Lesotho, typical seasons are:\n• Rainy: October-March\n• Dry: April-September\nPlan your planting accordingly."
 
 def get_weather_advisory(city="Maseru"):
+    """Get weather-based crop advisory using actual weather data"""
     try:
         if not OPENWEATHER_API_KEY:
             return ["📡 Weather advisory service unavailable. Monitor local conditions and protect crops during extreme weather."]
         
-        return [
-            "⚠️ Regular farm advisory:",
-            "• Check soil moisture before watering",
-            "• Monitor crops for pest signs weekly", 
-            "• Prepare for seasonal changes",
-            "• Rotate crops to maintain soil health"
-        ]
+        # Get current weather for specific advice
+        url = f"https://api.openweathermap.org/data/2.5/weather?q={city}&units=metric&appid={OPENWEATHER_API_KEY}"
+        r = requests.get(url, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+        
+        weather_desc = data['weather'][0]['description'].lower()
+        temp = data['main']['temp']
+        humidity = data['main']['humidity']
+        
+        advisory = [f"🌦️ **Weather-Based Advisory for {city}:**"]
+        
+        # Temperature-based advice
+        if temp < 10:
+            advisory.append("• ❄️ **Cold alert**: Protect sensitive crops with covers")
+            advisory.append("• 🌱 Delay planting warm-season crops")
+            advisory.append("• 🛑 Consider cold-tolerant varieties")
+        elif temp > 30:
+            advisory.append("• 🔥 **Heat alert**: Increase watering frequency")
+            advisory.append("• 🌅 Provide shade for young plants")
+            advisory.append("• 💧 Water early morning or late evening")
+        else:
+            advisory.append("• ✅ **Good conditions** for most crops")
+        
+        # Weather condition advice
+        if 'rain' in weather_desc:
+            advisory.append("• 🌧️ **Rain expected**: Hold off irrigation")
+            advisory.append("• 🚫 Delay fertilizer application")
+            advisory.append("• ✅ Good for planting rain-fed crops")
+        elif 'clear' in weather_desc or 'sunny' in weather_desc:
+            advisory.append("• ☀️ **Sunny days**: Ensure adequate watering")
+            advisory.append("• ✅ Good for harvesting and drying")
+            advisory.append("• 🌱 Ideal for planting most crops")
+        
+        # Humidity advice
+        if humidity > 80:
+            advisory.append("• 💦 **High humidity**: Watch for fungal diseases")
+            advisory.append("• 🍄 Increase air circulation around plants")
+            advisory.append("• 🚫 Avoid overhead watering")
+        elif humidity < 30:
+            advisory.append("• 🏜️ **Low humidity**: Increase watering frequency")
+            advisory.append("• 🌱 Use mulch to retain soil moisture")
+        
+        return advisory
+        
     except Exception as e:
         return ["📡 Advisory service unavailable. Practice good farm management: regular monitoring and soil care."]
+
+def get_crop_advice_based_on_weather(city="Maseru", crop_type=None):
+    """Provide specific crop advice based on current weather conditions"""
+    try:
+        if not OPENWEATHER_API_KEY:
+            return "Weather service unavailable for crop advice."
+        
+        url = f"https://api.openweathermap.org/data/2.5/weather?q={city}&units=metric&appid={OPENWEATHER_API_KEY}"
+        r = requests.get(url, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+        
+        weather_desc = data['weather'][0]['description'].lower()
+        temp = data['main']['temp']
+        humidity = data['main']['humidity']
+        
+        advice = f"**🌱 Crop Advice for {city}**\n\n"
+        advice += f"Current: {temp}°C, {weather_desc}, {humidity}% humidity\n\n"
+        
+        # General advice based on conditions
+        if 'rain' in weather_desc:
+            advice += "**🌧️ Rainy Conditions:**\n"
+            advice += "• Good for planting rain-fed crops\n"
+            advice += "• Avoid working in wet fields to prevent soil compaction\n"
+            advice += "• Watch for waterlogging in heavy soils\n"
+        elif temp > 25:
+            advice += "**☀️ Warm Conditions:**\n"
+            advice += "• Ideal for warm-season crops\n"
+            advice += "• Ensure adequate irrigation\n"
+            advice += "• Good for crop growth and development\n"
+        elif temp < 15:
+            advice += "**❄️ Cool Conditions:**\n"
+            advice += "• Suitable for cool-season crops\n"
+            advice += "• Protect sensitive plants from cold\n"
+            advice += "• Consider using row covers\n"
+        
+        # Crop-specific advice
+        if crop_type:
+            advice += f"\n**{crop_type.capitalize()} Specific:**\n"
+            if crop_type in ['maize', 'sorghum']:
+                if temp > 20:
+                    advice += "• Good growing temperatures\n• Ensure adequate moisture\n• Monitor for pests\n"
+                else:
+                    advice += "• Growth may be slow\n• Wait for warmer temperatures\n"
+            elif crop_type in ['cabbage', 'carrot']:
+                if temp < 25:
+                    advice += "• Ideal cool-season conditions\n• Good for root development\n• Watch for fungal issues in humidity\n"
+                else:
+                    advice += "• May bolt in heat\n• Provide shade if possible\n"
+        
+        advice += "\n**Always monitor local conditions and adjust accordingly.**"
+        return advice
+        
+    except Exception as e:
+        return f"**🌱 General Crop Advice for {city}:**\n\nMonitor soil moisture, protect crops from extreme weather, and follow seasonal planting guidelines for Lesotho."
 
 # ---------------- ENHANCED HUMAN-LIKE CONVERSATION WITH FALLBACKS ----------------
 def get_conversational_response(user_input, context, chat_history):
@@ -373,19 +472,30 @@ def find_best_answer(user_text, context):
             forecast = get_weather(city=city, days=3)
             return f"**Weather for {city}:**\n{forecast}"
 
-        # Enhanced advisory with fallback
-        if "advisory" in user_text or "alert" in user_text:
-            advisory = get_weather_advisory()
-            return "**Farm Advisory:**\n" + "\n".join([f"• {advice}" for advice in advisory])
+        # Enhanced advisory with fallback - NOW WITH WEATHER-BASED CROP ADVICE
+        if "advisory" in user_text or "alert" in user_text or "crop advice" in user_text:
+            if "crop" in user_text and context.get("crop_type"):
+                # Get weather-based advice for specific crop
+                city = st.session_state.get("weather_city", "Maseru")
+                crop_advice = get_crop_advice_based_on_weather(city, context.get("crop_type"))
+                agricultural_expert.add_to_conversation(user_text, crop_advice)
+                return crop_advice
+            else:
+                advisory = get_weather_advisory()
+                return "**Farm Advisory:**\n" + "\n".join([f"• {advice}" for advice in advisory])
 
-        # Enhanced planting questions with fallback
+        # Enhanced planting questions with weather-based advice
         if "plant" in user_text or "grow" in user_text or "sow" in user_text:
             for crop in planting_calendar.keys():
                 if crop in user_text:
                     context["crop_type"] = crop
+                    # Get weather-based planting advice
+                    city = st.session_state.get("weather_city", "Maseru")
+                    weather_advice = get_crop_advice_based_on_weather(city, crop)
                     guide = show_planting_calendar(crop, planting_calendar)
-                    agricultural_expert.add_to_conversation(user_text, guide)
-                    return guide
+                    combined_advice = f"{guide}\n\n{weather_advice}"
+                    agricultural_expert.add_to_conversation(user_text, combined_advice)
+                    return combined_advice
 
         # ML-based matching with fallback
         if vectorizer and corpus_texts:
@@ -410,13 +520,13 @@ def find_best_answer(user_text, context):
 
         # COMPREHENSIVE FALLBACK SYSTEM
         fallback_keywords = {
-            'planting': "For planting advice, tell me which crop you're interested in (maize, wheat, beans, etc.) and I'll provide specific guidance.",
-            'fertilizer': "For fertilizer questions, specify the crop and I'll recommend the right nutrients and application methods.",
+            'planting': "For planting advice, tell me which crop you're interested in (maize, wheat, beans, etc.) and I'll provide specific guidance based on current weather.",
+            'fertilizer': "For fertilizer questions, specify the crop and current weather conditions for the best application advice.",
             'pest': "For pest issues, describe the damage you're seeing and which crop is affected for specific solutions.",
             'disease': "For disease problems, tell me the symptoms and crop type for treatment recommendations.",
-            'soil': "For soil questions, I can help with soil preparation, pH adjustment, and fertility improvement.",
-            'water': "For irrigation advice, I can provide watering schedules and efficient water management tips.",
-            'harvest': "For harvesting guidance, specify the crop and I'll tell you when and how to harvest for best results."
+            'soil': "For soil questions, I can help with soil preparation, pH adjustment, and fertility improvement based on seasonal conditions.",
+            'water': "For irrigation advice, I can provide watering schedules based on current weather and efficient water management tips.",
+            'harvest': "For harvesting guidance, specify the crop and I'll tell you when and how to harvest for best results considering weather conditions."
         }
         
         for keyword, response in fallback_keywords.items():
@@ -509,7 +619,7 @@ if "show_camera" not in st.session_state:
 if "uploaded_file" not in st.session_state:
     st.session_state.uploaded_file = None
 
-# ---------------- FIXED UI STYLING ----------------
+# ---------------- MOBILE-OPTIMIZED UI STYLING ----------------
 def apply_custom_styling():
     dark_mode = st.session_state.dark_mode
     
@@ -531,28 +641,28 @@ def apply_custom_styling():
         
         .main-header {{
             background: {header_gradient};
-            padding: 2rem;
-            border-radius: 16px;
-            margin-bottom: 1.5rem;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            padding: 1rem;
+            border-radius: 12px;
+            margin-bottom: 1rem;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.1);
             color: white;
             text-align: center;
         }}
         
         .custom-card {{
             background: {card_bg};
-            padding: 1.5rem;
-            border-radius: 16px;
+            padding: 1rem;
+            border-radius: 12px;
             border: 1px solid {border_color};
-            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-            margin-bottom: 1rem;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+            margin-bottom: 0.75rem;
         }}
         
         .chat-container {{
             background: {chat_bg};
-            border-radius: 16px;
-            padding: 1.5rem;
-            height: 60vh;
+            border-radius: 12px;
+            padding: 1rem;
+            height: 50vh;
             overflow-y: auto;
             border: 1px solid {border_color};
         }}
@@ -560,21 +670,22 @@ def apply_custom_styling():
         .msg-user {{
             text-align: right;
             margin-left: auto;
-            margin-bottom: 1rem;
+            margin-bottom: 0.75rem;
         }}
         
         .msg-bot {{
             text-align: left;
             margin-right: auto;
-            margin-bottom: 1rem;
+            margin-bottom: 0.75rem;
         }}
         
         .msg-bubble {{
-            padding: 12px 18px;
-            border-radius: 18px;
-            max-width: 70%;
+            padding: 10px 14px;
+            border-radius: 16px;
+            max-width: 85%;
             word-wrap: break-word;
             display: inline-block;
+            font-size: 0.9rem;
         }}
         
         .msg-user .msg-bubble {{
@@ -590,33 +701,77 @@ def apply_custom_styling():
         
         .input-container {{
             background: {card_bg};
-            padding: 1rem;
-            border-radius: 16px;
+            padding: 0.75rem;
+            border-radius: 12px;
             border: 1px solid {border_color};
-            margin-top: 1rem;
+            margin-top: 0.75rem;
         }}
         
         .stButton>button {{
             background: {button_gradient};
             color: white;
             border: none;
-            padding: 0.5rem 1.5rem;
-            border-radius: 12px;
+            padding: 0.4rem 1rem;
+            border-radius: 10px;
             font-weight: 600;
+            font-size: 0.85rem;
+            min-height: 2.5rem;
         }}
         
         .chat-image {{
-            max-width: 200px;
-            border-radius: 12px;
-            margin: 8px 0;
+            max-width: 150px;
+            border-radius: 10px;
+            margin: 6px 0;
         }}
         
         .stTextInput>div>div>input {{
             background: {card_bg} !important;
             color: {text_color} !important;
             border: 1px solid {border_color} !important;
-            border-radius: 12px;
+            border-radius: 10px;
+            font-size: 0.9rem;
+            min-height: 2.5rem;
         }}
+        
+        /* Mobile optimizations */
+        @media (max-width: 768px) {{
+            .main-header {{
+                padding: 0.75rem;
+                margin-bottom: 0.75rem;
+            }}
+            
+            .chat-container {{
+                height: 45vh;
+                padding: 0.75rem;
+            }}
+            
+            .msg-bubble {{
+                max-width: 90%;
+                padding: 8px 12px;
+                font-size: 0.85rem;
+            }}
+            
+            .custom-card {{
+                padding: 0.75rem;
+                margin-bottom: 0.5rem;
+            }}
+            
+            .input-container {{
+                padding: 0.5rem;
+            }}
+            
+            .stButton>button {{
+                padding: 0.3rem 0.8rem;
+                font-size: 0.8rem;
+                min-height: 2.2rem;
+            }}
+        }}
+        
+        /* Hide streamlit branding */
+        #MainMenu {{visibility: hidden;}}
+        footer {{visibility: hidden;}}
+        .stDeployButton {{display:none;}}
+        #stDecoration {{display:none;}}
     </style>
     """
     st.markdown(custom_css, unsafe_allow_html=True)
@@ -627,11 +782,11 @@ apply_custom_styling()
 st.markdown(
     f"""
     <div class="main-header">
-        <div style="display: flex; align-items: center; justify-content: center; gap: 16px; margin-bottom: 1rem;">
-            <img src="https://cdn-icons-png.flaticon.com/512/194/194938.png" width="60" style="border-radius: 50%; background: white; padding: 8px;">
+        <div style="display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 0.5rem;">
+            <img src="https://cdn-icons-png.flaticon.com/512/194/194938.png" width="40" style="border-radius: 50%; background: white; padding: 6px;">
             <div>
-                <h1>🌱 {APP_NAME}</h1>
-                <p>Your intelligent farming assistant for Lesotho</p>
+                <h1 style="margin:0; font-size:1.5rem;">🌱 {APP_NAME}</h1>
+                <p style="margin:0; font-size:0.9rem;">Your intelligent farming assistant for Lesotho</p>
             </div>
         </div>
     </div>
@@ -639,33 +794,34 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# ---------------- MAIN LAYOUT ----------------
+# ---------------- MOBILE-RESPONSIVE MAIN LAYOUT ----------------
+# Use columns on desktop, stack on mobile
 col1, col2 = st.columns([1, 2])
 
 with col1:
     # Auth panel
     st.markdown('<div class="custom-card">', unsafe_allow_html=True)
-    st.subheader("🔐 Authentication")
+    st.subheader("🔐 Auth")
     
     try:
         if not st.session_state["logged_in"]:
-            auth_mode = st.radio("Auth Mode", ["Guest", "Login", "Register"], index=0)
+            auth_mode = st.radio("Mode", ["Guest", "Login", "Register"], index=0, horizontal=True)
             if auth_mode == "Register":
                 new_user = st.text_input("New Username")
                 new_pwd = st.text_input("New Password", type="password")
-                if st.button("Register") and new_user and new_pwd:
+                if st.button("Register", use_container_width=True) and new_user and new_pwd:
                     if chat_db.register(new_user, new_pwd):
-                        st.success("✅ Registered successfully! Please log in.")
+                        st.success("✅ Registered! Please log in.")
                         st.session_state["logged_in"] = True
                         st.session_state["username"] = new_user
                         st.session_state["chat"] = []
                         st.rerun()
                     else:
-                        st.error("❌ Registration failed. Username may already exist.")
+                        st.error("❌ Registration failed.")
             elif auth_mode == "Login":
                 username = st.text_input("Username")
                 password = st.text_input("Password", type="password")
-                if st.button("Login") and username and password:
+                if st.button("Login", use_container_width=True) and username and password:
                     success, prefs = chat_db.verify(username, password)
                     if success:
                         st.success(f"✅ Welcome back, {username}!")
@@ -676,52 +832,54 @@ with col1:
                     else:
                         st.error("❌ Invalid credentials")
             else:
-                if st.button("Continue as Guest"):
+                if st.button("Continue as Guest", use_container_width=True):
                     st.session_state["logged_in"] = False
                     st.session_state["username"] = "Guest"
                     st.session_state["chat"] = []
-                    st.success("🎉 Welcome! You're browsing as a guest.")
+                    st.success("🎉 Welcome! Guest mode.")
                     st.rerun()
         else:
-            st.success(f"✅ Logged in as: **{st.session_state['username']}**")
-            if st.button("Logout"):
+            st.success(f"✅ **{st.session_state['username']}**")
+            if st.button("Logout", use_container_width=True):
                 st.session_state["logged_in"] = False
                 st.session_state["username"] = None
                 st.session_state["chat"] = []
                 st.rerun()
     except Exception as e:
-        st.warning(f"Authentication error: {e}")
+        st.warning(f"Auth error: {e}")
     st.markdown('</div>', unsafe_allow_html=True)
 
     # Weather
     st.markdown('<div class="custom-card">', unsafe_allow_html=True)
     st.subheader("🌦️ Weather")
-    city = st.text_input("City", value=st.session_state["weather_city"])
-    if st.button("Get Forecast"):
+    city = st.text_input("City", value=st.session_state["weather_city"], key="weather_city_input")
+    if st.button("Get Forecast", use_container_width=True):
         st.session_state["weather_city"] = city
         forecast = get_weather(city=city)
         st.info(forecast)
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # Weather Advisory
-    st.markdown('<div class="custom-card">', unsafe_allow_html=True)
-    st.subheader("⚠️ Weather Advisory")
-    if st.button("Get Advisory"):
-        advisory = get_weather_advisory()
-        st.warning("\n".join(advisory))
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    # Planting Calendar
+    # Planting Calendar - RESTORED
     st.markdown('<div class="custom-card">', unsafe_allow_html=True)
     st.subheader("📅 Planting Calendar")
     crop_options = list(planting_calendar.keys())
     if crop_options:
         selected_crop = st.selectbox("Select a crop:", crop_options, key="crop_select")
-        if st.button("Show Guide"):
+        if st.button("Show Planting Guide", use_container_width=True):
             guide = show_planting_calendar(selected_crop, planting_calendar)
             st.info(guide)
     else:
         st.info("No planting data available")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # Weather Advisory with Crop Advice
+    st.markdown('<div class="custom-card">', unsafe_allow_html=True)
+    st.subheader("⚠️ Crop Advice")
+    if st.button("Get Weather-Based Advice", use_container_width=True):
+        city = st.session_state.get("weather_city", "Maseru")
+        crop_type = st.session_state.context.get("crop_type")
+        advisory = get_crop_advice_based_on_weather(city, crop_type)
+        st.warning(advisory)
     st.markdown('</div>', unsafe_allow_html=True)
 
     # Theme toggle
@@ -738,7 +896,7 @@ with col1:
 with col2:
     # Chat display
     st.markdown('<div class="chat-container" id="chat_container">', unsafe_allow_html=True)
-    for msg in st.session_state["chat"][-50:]:
+    for msg in st.session_state["chat"][-30:]:  # Show fewer messages on mobile
         cls = "msg-user" if msg["role"] == "user" else "msg-bot"
         content = render_markdown(msg["text"]) if msg["role"] == "assistant" else html.escape(msg["text"])
         if msg.get("image"):
@@ -761,62 +919,41 @@ with col2:
         unsafe_allow_html=True,
     )
 
-    # ENHANCED CHAT INPUT WITH BOTH CAMERA AND UPLOAD BUTTONS
+    # MOBILE-OPTIMIZED CHAT INPUT - CAMERA ONLY (NO UPLOAD)
     st.markdown('<div class="input-container">', unsafe_allow_html=True)
     
     with st.form("chat_input", clear_on_submit=True):
-        # Single line for input and buttons - BOTH CAMERA AND UPLOAD
-        input_col1, input_col2, input_col3, input_col4 = st.columns([5, 1, 1, 1])
+        # Single line for input and camera button
+        input_col1, input_col2, input_col3 = st.columns([4, 1, 1])
         
         with input_col1:
-            user_input = st.text_input("Type your message...", label_visibility="collapsed", placeholder="Ask about crops, weather, or farming...")
+            user_input = st.text_input(
+                "Type your message...", 
+                label_visibility="collapsed", 
+                placeholder="Ask about crops, weather...",
+                key="chat_input_field"
+            )
         
         with input_col2:
-            # Upload button
-            uploaded_file = st.file_uploader("📁", type=["png", "jpg", "jpeg"], 
-                                           label_visibility="collapsed", 
-                                           help="Upload an image",
-                                           key="file_uploader")
-        
-        with input_col3:
-            # Camera button - single word
-            camera_clicked = st.form_submit_button("📷", help="Take a photo")
+            # Camera button only - no upload button
+            camera_clicked = st.form_submit_button(
+                "📷", 
+                help="Take a photo",
+                use_container_width=True
+            )
             if camera_clicked:
                 st.session_state.show_camera = True
         
-        with input_col4:
-            submit = st.form_submit_button("Send")
-
-    # Handle uploaded file
-    if uploaded_file and not st.session_state.show_camera:
-        try:
-            img_path = os.path.join(IMAGES_DIR, f"upload_{int(time.time())}.png")
-            with open(img_path, "wb") as f:
-                f.write(uploaded_file.getbuffer())
-            
-            st.session_state["chat"].append({
-                "role": "user", 
-                "text": "[Image uploaded for analysis]", 
-                "time": now_iso(), 
-                "image": img_path
-            })
-            st.session_state["chat"].append({
-                "role": "assistant", 
-                "text": "**📸 Image Uploaded Successfully!**\n\nPlease describe what you're seeing in the image so I can provide specific agricultural advice.", 
-                "time": now_iso()
-            })
-            
-            if st.session_state.get("logged_in"):
-                chat_db.save_chat(st.session_state["username"], "user", "[Image uploaded]", img_path)
-                chat_db.save_chat(st.session_state["username"], "assistant", "Image uploaded successfully")
-            
-            st.rerun()
-        except Exception as e:
-            st.error(f"❌ Upload error: {e}")
+        with input_col3:
+            submit = st.form_submit_button(
+                "Send", 
+                use_container_width=True,
+                type="primary"
+            )
 
     # Camera appears only when requested and CLOSES AFTER CAPTURE
     if st.session_state.show_camera:
-        st.write("**Camera - Take a picture of your crops**")
+        st.write("**📸 Camera - Take a picture of your crops**")
         picture = st.camera_input("", key="camera_input", label_visibility="collapsed")
         
         if picture:
@@ -839,15 +976,15 @@ with col2:
                         chat_db.save_chat(st.session_state["username"], "user", "[Camera image captured]", img_path)
                         chat_db.save_chat(st.session_state["username"], "assistant", analysis)
                     
-                    # ✅ FIXED: CLOSE CAMERA AFTER CAPTURE
+                    # ✅ CLOSE CAMERA AFTER CAPTURE
                     st.session_state.show_camera = False
                     st.session_state.camera_capture = None
                     st.rerun()
             except Exception as e:
-                st.error(f"❌ Camera processing error: {e}")
+                st.error(f"❌ Camera error: {e}")
 
         # Close camera button
-        if st.button("Close Camera"):
+        if st.button("Close Camera", use_container_width=True):
             st.session_state.show_camera = False
             st.rerun()
 
@@ -878,14 +1015,12 @@ with col2:
     
     st.markdown('</div>', unsafe_allow_html=True)
 
-# ---------------- FOOTER ----------------
+# ---------------- MOBILE FOOTER ----------------
 st.markdown(
     """
-    <div style="text-align: center; margin-top: 2rem; padding: 1rem; color: #666; font-size: 0.9rem;">
-        <hr style="margin-bottom: 1rem;">
-        <p>🌱 <strong>AgriChat Pro</strong> - Your AI Agricultural Assistant for Lesotho</p>
-        <p>Ready for deployment | Complete image support | Robust error handling</p>
-    </div>
+    <div style="text-align: center; margin-top: 1rem; padding: 0.75rem; color: #666; font-size: 0.8rem;">
+        <hr style="margin-bottom: 0.75rem;">
+        <p>🌱 <strong>AgriChat Pro</strong> - AI Agricultural Assistant for Lesotho</p></div>
     """,
     unsafe_allow_html=True
 )
